@@ -1,0 +1,165 @@
+//Transmitter Code for Arduino Nano based 7CH RC Controller using nrf24L01+
+
+#include "Arduino.h"
+#include <SPI.h>
+#include <RF24.h>
+
+
+// Joystick connections
+const int joyX = A0;
+const int joyY = A1;
+const int joyKey = 8;
+const int joyX2 = A2;
+const int joyY2 = A3;
+const int joyKey2 = 4;
+
+
+// Potentiometer connection
+const int potPin = A4;
+
+
+// Variables to store joystick and potentiometer state
+int analogX = 0;
+int analogY = 0;
+int analogX2 = 0;
+int analogY2 = 0;
+int joyKeyState = 0;
+int joyKey2State = 0;
+int potValue = 0;
+
+
+// Array to store transmitted message
+int outMessage[7];
+
+
+// Hardware configuration: Set up nRF24L01 radio on SPI bus (pins 10, 11, 12, 13) plus pins 9 & 10
+RF24 radio(9, 10);
+byte addresses[][6] = {"1Node", "2Node"};
+
+
+// -----------------------------------------------------------------------------
+// SETUP
+// -----------------------------------------------------------------------------
+void setup() {
+  // Debug output
+  Serial.begin(9600);
+  Serial.println("TRANSMITTER");
+
+
+  // Initialize joystick pins
+  pinMode(joyX, INPUT);
+  pinMode(joyY, INPUT);
+  pinMode(joyKey, INPUT_PULLUP); // Use internal pull-up resistor
+  pinMode(joyX2, INPUT);
+  pinMode(joyY2, INPUT);
+  pinMode(joyKey2, INPUT_PULLUP); // Use internal pull-up resistor
+
+
+  // Initialize potentiometer pin
+  pinMode(potPin, INPUT);
+
+
+  // Initialize the radio
+  radio.begin();
+  radio.setAutoAck(false);
+  radio.setPALevel(RF24_PA_MIN);
+  radio.setDataRate(RF24_250KBPS);
+  radio.setChannel(110);
+  radio.openWritingPipe(addresses[1]);
+  radio.openReadingPipe(1, addresses[0]);
+}
+
+
+// -----------------------------------------------------------------------------
+// LOOP
+// -----------------------------------------------------------------------------
+void loop() {
+  // Read and map joystick values
+  analogX = map(analogRead(joyX), 512, 1023, 5, 255);
+  analogY = map(analogRead(joyY), 512, 1023, 5, 255);
+  joyKeyState = !digitalRead(joyKey); // Invert logic for pull-up configuration
+
+
+  analogX2 = map(analogRead(joyX2), 512, 1023, 5, 255);
+  analogY2 = map(analogRead(joyY2), 512, 1023, 5, 255);
+  joyKey2State = !digitalRead(joyKey2); // Invert logic for pull-up configuration
+
+
+  // Read potentiometer value
+  potValue = analogRead(potPin);
+
+
+  // Print joystick values, button states, and potentiometer value
+  Serial.print("Joystick 1: X=");
+  Serial.print(analogX);
+  Serial.print(", Y=");
+  Serial.print(analogY);
+  Serial.print(", Button=");
+  Serial.println(joyKeyState);
+
+
+  Serial.print("Joystick 2: X=");
+  Serial.print(analogX2);
+  Serial.print(", Y=");
+  Serial.print(analogY2);
+  Serial.print(", Button=");
+  Serial.println(joyKey2State);
+
+
+  Serial.print("Potentiometer Value: ");
+  Serial.println(potValue);
+
+
+  // Populate the message array
+  outMessage[0] = analogX;
+  outMessage[1] = analogY;
+  outMessage[2] = joyKeyState;
+  outMessage[3] = analogX2;
+  outMessage[4] = analogY2;
+  outMessage[5] = joyKey2State;
+  outMessage[6] = potValue;
+
+
+  // Stop listening to prepare for transmission
+  radio.stopListening();
+
+
+  // Transmit the message
+  if (!radio.write(outMessage, sizeof(outMessage))) {
+    Serial.println("No acknowledgement of transmission - receiving radio device connected?");
+  }
+
+
+  // Start listening for response
+  radio.startListening();
+
+
+  // Wait for a response or timeout
+  unsigned long started_waiting_at = millis();
+  while (!radio.available()) {
+    if (millis() - started_waiting_at > 150) {
+      Serial.println("No response received - timeout!");
+      return;
+    }
+  }
+
+
+  // Read incoming message
+  unsigned char inMessage;
+  radio.read(&inMessage, sizeof(unsigned char));
+
+
+  // Print sent and received data
+  Serial.print("Sent: ");
+  Serial.print(outMessage[0]); // Example: print the first value sent
+  Serial.print(", received: ");
+  Serial.println(inMessage);
+
+
+  delay(100); // Add a small delay for stability
+}
+
+
+
+
+
