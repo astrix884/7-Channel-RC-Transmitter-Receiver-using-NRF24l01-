@@ -1,0 +1,219 @@
+//Receiver Code , this is specially for Remote controlled 4wd bot
+
+
+#include "Arduino.h"
+#include <SPI.h>
+#include <RF24.h>
+#include <Servo.h>
+
+
+// Motor A and B connections (for main movement)
+const int in1 = A0;
+const int in2 = A1;
+const int in3 = A2;
+const int in4 = A3;
+const int enA = 5;
+const int enB = 6;
+
+
+// Other components
+const int led = 7;
+const int buzzer = 8;
+
+
+// Servo motors
+Servo servoX;
+Servo servoY;
+Servo servoZ;
+
+
+// Variables to store received values
+int analogX = 0;
+int analogY = 0;
+int analogX2 = 0;
+int analogY2 = 0;
+int joyKeyState = 0;
+int joyKey2State = 0;
+int potValue = 0;
+
+
+// Array to store received message
+int inMessage[7];
+
+
+// RF24 radio setup
+RF24 radio(9, 10);
+byte addresses[][6] = {"1Node", "2Node"};
+
+
+// Setup function
+void setup() {
+  // Set motor control pins to outputs
+  pinMode(in1, OUTPUT);
+  pinMode(in2, OUTPUT);
+  pinMode(in3, OUTPUT);
+  pinMode(in4, OUTPUT);
+  pinMode(enA, OUTPUT);
+  pinMode(enB, OUTPUT);
+
+
+  // Attach servos
+  servoX.attach(4);
+  servoY.attach(3);
+  servoZ.attach(2);
+
+
+  // Initialize Serial and RF24
+  Serial.begin(9600);
+  Serial.println("Starting receiver...");
+
+
+  radio.begin();
+  radio.setAutoAck(false);
+  radio.setPALevel(RF24_PA_MIN);
+  radio.setDataRate(RF24_250KBPS);
+  radio.setChannel(110);
+  radio.openWritingPipe(addresses[0]);
+  radio.openReadingPipe(1, addresses[1]);
+  radio.startListening();
+}
+
+
+// Loop function
+void loop() {
+  if (radio.available()) {
+    while (radio.available()) {
+      radio.read(&inMessage, sizeof(inMessage));
+    }
+
+
+    // Extract joystick, button, and potentiometer values
+    analogX = inMessage[0];   // X-axis of Joystick 1
+    analogY = inMessage[1];   // Y-axis of Joystick 1
+    joyKeyState = inMessage[2];
+    analogX2 = inMessage[3];  // X-axis of Joystick 2
+    analogY2 = inMessage[4];  // Y-axis of Joystick 2
+    joyKey2State = inMessage[5];
+    potValue = inMessage[6];  // Potentiometer value
+
+
+    // Print values for debugging
+    Serial.print("Joystick 1: X=");
+    Serial.print(analogX);
+    Serial.print(", Y=");
+    Serial.print(analogY);
+    Serial.print(", Button=");
+    Serial.println(joyKeyState);
+
+
+    Serial.print("Joystick 2: X=");
+    Serial.print(analogX2);
+    Serial.print(", Y=");
+    Serial.print(analogY2);
+    Serial.print(", Button=");
+    Serial.println(joyKey2State);
+
+
+    Serial.print("Potentiometer Value: ");
+    Serial.println(potValue);
+
+
+    // Control motors based on joystick input
+    if (abs(analogX) > 10 || abs(analogY) > 10) {
+      controlMovement();
+    } else {
+      motorReset();
+    }
+
+
+    // Handle buttons and servos
+    controlButtons();
+    controlServo();
+  }
+}
+
+
+// Function to control movement
+void controlMovement() {
+  int motorSpeedX = constrain(abs(analogX), 0, 255);
+  int motorSpeedY = constrain(abs(analogY), 0, 255);
+
+
+  // Forward/backward movement
+  if (analogX > 10) {
+    analogWrite(enA, motorSpeedX);
+    analogWrite(enB, motorSpeedX);
+    digitalWrite(in1, LOW);
+    digitalWrite(in2, HIGH);
+    digitalWrite(in3, LOW);
+    digitalWrite(in4, HIGH);
+  } else if (analogX < -10) {
+    analogWrite(enA, motorSpeedX);
+    analogWrite(enB, motorSpeedX);
+    digitalWrite(in1, HIGH);
+    digitalWrite(in2, LOW);
+    digitalWrite(in3, HIGH);
+    digitalWrite(in4, LOW);
+  }
+
+
+  // Turning movement
+  if (analogY > 10) {
+    analogWrite(enA, motorSpeedY);
+    analogWrite(enB, motorSpeedY);
+    digitalWrite(in1, LOW);
+    digitalWrite(in2, HIGH);
+    digitalWrite(in3, HIGH);
+    digitalWrite(in4, LOW);
+  } else if (analogY < -10) {
+    analogWrite(enA, motorSpeedY);
+    analogWrite(enB, motorSpeedY);
+    digitalWrite(in1, HIGH);
+    digitalWrite(in2, LOW);
+    digitalWrite(in3, LOW);
+    digitalWrite(in4, HIGH);
+  }
+}
+
+
+// Function to reset motors
+void motorReset() {
+  analogWrite(enA, 0);
+  analogWrite(enB, 0);
+  digitalWrite(in1, LOW);
+  digitalWrite(in2, LOW);
+  digitalWrite(in3, LOW);
+  digitalWrite(in4, LOW);
+}
+
+
+// Function to handle buttons
+void controlButtons() {
+  if (joyKeyState == 1) {
+    digitalWrite(led, HIGH);
+  } else {
+    digitalWrite(led, LOW);
+  }
+
+
+  if (joyKey2State == 1) {
+    digitalWrite(buzzer, HIGH);
+  } else {
+    digitalWrite(buzzer, LOW);
+  }
+}
+
+
+// Function to control servos
+void controlServo() {
+  int servo1 = map(constrain(analogX2, -255, 255), -255, 255, 0, 180);
+  int servo2 = map(constrain(analogY2, -255, 255), -255, 255, 0, 180);
+
+
+  servoX.write(servo1);
+  servoY.write(servo2);
+  delay(15);
+}
+
+
+
